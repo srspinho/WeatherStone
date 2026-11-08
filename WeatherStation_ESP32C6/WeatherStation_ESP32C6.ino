@@ -700,6 +700,12 @@ void setup()
   showMessage("Iniciando...", nullptr);
   loadConfig();
   applyTimezone();
+
+  // Inicializa o Wi-Fi (e a pilha TCP/IP) ANTES de qualquer servidor de rede:
+  // no core 3.x, abrir um servidor antes disso faz o ESP32 reiniciar.
+  WiFi.persistent(false);
+  WiFi.setHostname(HOSTNAME);
+  WiFi.mode(WIFI_STA);
   setupWebServer();
 
   if (connectWiFi())
