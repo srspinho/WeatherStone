@@ -76,7 +76,7 @@ Nenhum fio extra é necessário.
 3. **Placa**: `ESP32C6 Dev Module`
    - *USB CDC On Boot*: **Enabled** (para ver o Serial Monitor)
    - *Flash Size*: 4MB
-   - *Partition Scheme*: Default 4MB with spiffs
+   - *Partition Scheme*: **Huge APP (3MB No OTA/1MB SPIFFS)** (com a partição padrão o sketch não cabe: "Sketch too big")
 4. Não é preciso editar nada: Wi-Fi e cidade são configurados pelo celular (veja acima).
 5. Carregue o sketch. Se a placa não for detectada, segure **BOOT**, aperte **RST** e solte **BOOT**.
 

@@ -16,6 +16,7 @@
  *   - Extras: brilho noturno automático, LED RGB de status, textos em PT-BR
  *
  *  Placa (Arduino IDE): "ESP32C6 Dev Module"  (core esp32 da Espressif >= 3.0)
+ *     Partition Scheme: "Huge APP (3MB No OTA/1MB SPIFFS)"  (o sketch não cabe na padrão)
  *     USB CDC On Boot: Enabled  (para ver o Serial Monitor pela USB-C)
  *
  *  Bibliotecas (Library Manager):
