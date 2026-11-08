@@ -21,7 +21,10 @@ Estação de previsão do tempo para a placa **Waveshare ESP32-C6-LCD-1.47**
 1. **Agora** – relógio e data no topo; à esquerda ícone, temperatura, máx/mín,
    descrição, umidade e vento; à direita a previsão dos próximos 3 dias
    (ícone, máx/mín e chance de chuva).
-2. **Detalhes** – duas colunas com sensação térmica, umidade, vento com direção,
+2. **Próximas horas** – gráfico das próximas 12 horas: linha de temperatura,
+   barras com a chance de chuva, ícone do tempo a cada 3 horas e faixas mais
+   escuras nas horas da noite.
+3. **Detalhes** – duas colunas com sensação térmica, umidade, vento com direção,
    pressão, chance de chuva, índice UV, nascer e pôr do sol, e o horário da última atualização.
 
 As telas alternam a cada 10 s (configurável) e também podem ser trocadas com um toque no botão **BOOT**.

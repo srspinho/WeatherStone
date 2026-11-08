@@ -103,6 +103,19 @@ struct WeatherData
   time_t updatedAt = 0;
 } wx;
 
+// Previsão hora a hora (hora atual + 12 horas)
+#define NUM_HOURS 13
+struct HourPoint
+{
+  int hour = 0;   // 0..23
+  float temp = NAN;
+  int pop = -1;   // probabilidade de chuva (%)
+  int code = -1;
+  bool isDay = true;
+};
+HourPoint hours[NUM_HOURS];
+int hourCount = 0;
+
 // ---------------------------------------------------------------------------
 // Configuração (gravada na flash; editada pela página web)
 // ---------------------------------------------------------------------------
@@ -135,7 +148,7 @@ bool fetchNow = false;
 // ---------------------------------------------------------------------------
 // Estado
 // ---------------------------------------------------------------------------
-#define NUM_PAGES 2
+#define NUM_PAGES 3 // 0 = agora, 1 = próximas horas, 2 = detalhes
 int page = 0;
 bool needRedraw = true;
 uint32_t lastPageChange = 0;
@@ -388,7 +401,120 @@ static void drawMainPage()
   }
 }
 
-// Página 2: detalhes em duas colunas
+// Página 2: próximas 12 horas - temperatura (linha) e chance de chuva (barras)
+static void drawHourlyPage()
+{
+  const int16_t W = gfx->width();
+  char buf[16];
+
+  // painel
+  const int16_t panelTop = 52, panelBottom = 163;
+  gfx->fillRoundRect(4, panelTop, W - 8, panelBottom - panelTop, 8, C_PANEL);
+
+  if (hourCount < 2)
+  {
+    drawText("Sem dados por hora", W / 2, 112, AL_CENTER, C_TEXT_DIM, u8g2_font_helvB10_tf);
+    return;
+  }
+
+  // área do gráfico
+  const int16_t plotLeft = 22, plotRight = W - 22;
+  const int16_t lineTop = 92, lineBottom = 122; // faixa da linha de temperatura
+  const int16_t base = 140;                      // base das barras / área
+  const int16_t barMax = 44;                     // altura de 100% de chuva
+  const float step = (float)(plotRight - plotLeft) / (NUM_HOURS - 1);
+  const uint16_t C_NIGHT = RGB565(14, 20, 38);
+  const uint16_t C_AREA = RGB565(62, 44, 40);
+  const uint16_t C_BAR = RGB565(36, 92, 168);
+
+  // escala de temperatura (mínimo de 4 °C de amplitude para não exagerar)
+  float tMin = 1000, tMax = -1000;
+  for (int i = 0; i < hourCount; i++)
+  {
+    tMin = min(tMin, hours[i].temp);
+    tMax = max(tMax, hours[i].temp);
+  }
+  if (tMax - tMin < 4.0f)
+  {
+    float mid = (tMax + tMin) / 2.0f;
+    tMin = mid - 2.0f;
+    tMax = mid + 2.0f;
+  }
+
+  int16_t px[NUM_HOURS], py[NUM_HOURS];
+  for (int i = 0; i < hourCount; i++)
+  {
+    px[i] = plotLeft + (int16_t)lroundf(step * i);
+    py[i] = lineBottom - (int16_t)lroundf((hours[i].temp - tMin) / (tMax - tMin) * (lineBottom - lineTop));
+  }
+
+  // faixas de noite
+  for (int i = 0; i < hourCount; i++)
+  {
+    if (hours[i].isDay)
+      continue;
+    int16_t x0 = max<int16_t>(8, px[i] - (int16_t)(step / 2));
+    int16_t x1 = min<int16_t>(W - 8, px[i] + (int16_t)(step / 2) + 1);
+    gfx->fillRect(x0, 78, x1 - x0, base - 78 + 1, C_NIGHT);
+  }
+
+  // área sob a linha de temperatura (interpolação coluna a coluna)
+  for (int i = 0; i < hourCount - 1; i++)
+  {
+    for (int16_t x = px[i]; x <= px[i + 1]; x++)
+    {
+      float k = (float)(x - px[i]) / (float)(px[i + 1] - px[i]);
+      int16_t y = (int16_t)lroundf(py[i] + (py[i + 1] - py[i]) * k);
+      gfx->drawFastVLine(x, y, base - y, C_AREA);
+    }
+  }
+
+  // barras de chance de chuva
+  for (int i = 0; i < hourCount; i++)
+  {
+    if (hours[i].pop <= 0)
+      continue;
+    int16_t h = (int16_t)lroundf(hours[i].pop / 100.0f * barMax);
+    if (h < 2)
+      h = 2;
+    gfx->fillRect(px[i] - 4, base - h, 9, h, C_BAR);
+  }
+
+  gfx->drawFastHLine(plotLeft - 8, base, plotRight - plotLeft + 16, C_PANEL_LINE);
+
+  // linha de temperatura
+  for (int i = 0; i < hourCount - 1; i++)
+    thickLine(gfx, px[i], py[i], px[i + 1], py[i + 1], 2.5f, C_TEMP_MAX);
+
+  // pontos, ícones e rótulos a cada 3 horas
+  for (int i = 0; i < hourCount; i++)
+  {
+    bool labeled = (i % 3) == 0;
+    gfx->fillCircle(px[i], py[i], labeled ? 3 : 2, labeled ? C_TEXT : C_TEMP_MAX);
+    if (!labeled)
+      continue;
+
+    drawWeatherIcon(gfx, px[i], 64, 22, hours[i].code, hours[i].isDay, C_PANEL);
+
+    snprintf(buf, sizeof(buf), "%ld°", lroundf(hours[i].temp));
+    drawText(buf, px[i], py[i] - 6, AL_CENTER, C_TEXT, u8g2_font_helvB08_tf);
+
+    if (i == 0)
+      snprintf(buf, sizeof(buf), "Agora");
+    else
+      snprintf(buf, sizeof(buf), "%dh", hours[i].hour);
+    drawText(buf, px[i], 151, AL_CENTER, C_TEXT_DIM, u8g2_font_helvR08_tf);
+
+    if (hours[i].pop >= 0)
+    {
+      snprintf(buf, sizeof(buf), "%d%%", hours[i].pop);
+      drawText(buf, px[i], 161, AL_CENTER, hours[i].pop >= 50 ? C_RAIN : C_TEXT_DIM,
+               u8g2_font_helvR08_tf);
+    }
+  }
+}
+
+// Página 3: detalhes em duas colunas
 static void drawDetailsPage()
 {
   char buf[32];
@@ -468,6 +594,8 @@ static void render()
   drawHeader();
   if (page == 0)
     drawMainPage();
+  else if (page == 1)
+    drawHourlyPage();
   else
     drawDetailsPage();
   drawPageDots();
@@ -489,6 +617,8 @@ static bool fetchWeather()
       "precipitation,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m"
       "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
       "precipitation_probability_max,sunrise,sunset,uv_index_max"
+      "&hourly=temperature_2m,precipitation_probability,weather_code,is_day"
+      "&forecast_hours=" + String(NUM_HOURS + 1) +
       "&timezone=auto&forecast_days=4&wind_speed_unit=kmh";
 
   statusLed(0, 0, STATUS_LED_LEVEL);
@@ -554,6 +684,33 @@ static bool fetchWeather()
     snprintf(wx.sunrise, sizeof(wx.sunrise), "%.5s", sr + 11);
   if (strlen(ss) >= 16)
     snprintf(wx.sunset, sizeof(wx.sunset), "%.5s", ss + 11);
+
+  // Hora a hora: a partir da hora atual (descarta horas que já passaram)
+  char nowStr[20] = "";
+  if (timeIsValid())
+  {
+    time_t now = time(nullptr);
+    struct tm t;
+    localtime_r(&now, &t);
+    strftime(nowStr, sizeof(nowStr), "%Y-%m-%dT%H:00", &t);
+  }
+  JsonObject hourly = doc["hourly"];
+  JsonArray hTime = hourly["time"];
+  hourCount = 0;
+  for (size_t i = 0; i < hTime.size() && hourCount < NUM_HOURS; i++)
+  {
+    const char *ts = hTime[i] | ""; // "AAAA-MM-DDTHH:MM"
+    if (strlen(ts) < 16 || (nowStr[0] && strcmp(ts, nowStr) < 0))
+      continue;
+    HourPoint &h = hours[hourCount];
+    h.hour = atoi(ts + 11);
+    h.temp = hourly["temperature_2m"][i] | NAN;
+    h.pop = hourly["precipitation_probability"][i] | -1;
+    h.code = hourly["weather_code"][i] | -1;
+    h.isDay = (hourly["is_day"][i] | 1) == 1;
+    if (!isnan(h.temp))
+      hourCount++;
+  }
 
   wx.valid = true;
   wx.updatedAt = time(nullptr);
