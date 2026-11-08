@@ -23,19 +23,29 @@
  *     - U8g2                     (olikraus)          - só as fontes
  *     - ArduinoJson              (Benoit Blanchon)   >= 7.0
  *
- *  Configure Wi-Fi, localização e fuso horário em settings.h
+ *  Wi-Fi e cidade são configurados pelo celular (veja web_config.ino):
+ *  na primeira vez, ou segurando o botão BOOT por 3 s, a estação cria a rede
+ *  "WeatherStation" e abre a página de configuração.
  * ============================================================================
  */
 
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <WebServer.h>
+#include <DNSServer.h>
+#include <ESPmDNS.h>
+#include <Preferences.h>
 #include <ArduinoJson.h>
+#include <vector>
+#include <algorithm>
 #include <Arduino_GFX_Library.h>
 #include <U8g2lib.h> // apenas para as fontes u8g2_font_*
 #include <time.h>
 
 #include "settings.h"
 #include "weather_icons.h"
+#include "web_assets.h"
 
 // ---------------------------------------------------------------------------
 // Pinos da placa Waveshare ESP32-C6-LCD-1.47
@@ -91,6 +101,35 @@ struct WeatherData
   char sunset[6] = "--:--";
   time_t updatedAt = 0;
 } wx;
+
+// ---------------------------------------------------------------------------
+// Configuração (gravada na flash; editada pela página web)
+// ---------------------------------------------------------------------------
+struct Config
+{
+  String ssid, pass;
+  String city, uf;
+  float lat = 0, lon = 0;
+  int32_t utcOffset = 0; // segundos
+} cfg;
+
+Preferences prefs;
+WebServer server(80);
+DNSServer dnsServer;
+
+bool portalActive = false;
+bool portalAutomatic = false;
+uint32_t portalStartMs = 0;
+uint32_t portalStopAt = 0;
+bool staConnecting = false;
+bool staBeginDone = false;
+uint32_t staConnectStart = 0;
+int connectResult = 0; // 0 = nada, 1 = conectou, 2 = falhou
+String pendingSsid, pendingPass;
+String scanHtml;
+bool mdnsStarted = false;
+bool wasConnected = false;
+bool fetchNow = false;
 
 // ---------------------------------------------------------------------------
 // Estado
@@ -265,7 +304,10 @@ static void drawHeader()
   if (WiFi.status() != WL_CONNECTED)
     drawText("sem Wi-Fi", W - 8, 38, AL_RIGHT, RGB565(255, 90, 90), u8g2_font_helvB08_tf);
   else
-    drawText(LOCATION_NAME, W - 8, 38, AL_RIGHT, C_TEXT_DIM, u8g2_font_helvR08_tf);
+  {
+    String loc = cfg.uf.length() ? cfg.city + " - " + cfg.uf : cfg.city;
+    drawText(loc.c_str(), W - 8, 38, AL_RIGHT, C_TEXT_DIM, u8g2_font_helvR08_tf);
+  }
 
   // indicador de dados desatualizados (falhas seguidas de atualização)
   bool stale = !wx.valid || (timeIsValid() && time(nullptr) - wx.updatedAt > 3 * UPDATE_INTERVAL_SECS);
@@ -411,6 +453,12 @@ static void drawDetailsPage()
     snprintf(buf, sizeof(buf), "Atualizado às %02d:%02d", t.tm_hour, t.tm_min);
     drawText(buf, 8, 168, AL_LEFT, C_TEXT_DIM, u8g2_font_helvR08_tf);
   }
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    // endereço da página de configuração na rede de casa
+    snprintf(buf, sizeof(buf), "%s", WiFi.localIP().toString().c_str());
+    drawText(buf, gfx->width() - 8, 168, AL_RIGHT, C_TEXT_DIM, u8g2_font_helvR08_tf);
+  }
 }
 
 static void render()
@@ -433,9 +481,9 @@ static bool fetchWeather()
   if (WiFi.status() != WL_CONNECTED)
     return false;
 
-  const char *url =
+  String url =
       "http://api.open-meteo.com/v1/forecast"
-      "?latitude=" LATITUDE "&longitude=" LONGITUDE
+      "?latitude=" + String(cfg.lat, 4) + "&longitude=" + String(cfg.lon, 4) +
       "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,"
       "precipitation,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m"
       "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
@@ -469,6 +517,10 @@ static bool fetchWeather()
     Serial.printf("[wx] JSON: %s\n", err.c_str());
     return false;
   }
+
+  // fuso horário da cidade (timezone=auto)
+  if (!doc["utc_offset_seconds"].isNull())
+    updateUtcOffset(doc["utc_offset_seconds"].as<int32_t>());
 
   JsonObject cur = doc["current"];
   wx.temp = cur["temperature_2m"] | NAN;
@@ -516,11 +568,17 @@ static bool fetchWeather()
 // ===========================================================================
 // Wi-Fi / hora
 // ===========================================================================
-static void connectWiFi()
+// Tenta conectar na rede salva, mostrando o progresso no display.
+// Retorna false se não há rede salva ou se não conectou em 20 s.
+static bool connectWiFi()
 {
+  WiFi.setHostname(HOSTNAME);
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  if (cfg.ssid.length() == 0)
+    return false;
+
+  WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str());
   statusLed(0, 0, STATUS_LED_LEVEL);
 
   char dots[8] = "";
@@ -537,28 +595,19 @@ static void connectWiFi()
     }
     char line[48];
     snprintf(line, sizeof(line), "Conectando%s", dots);
-    showMessage(line, WIFI_SSID);
+    showMessage(line, cfg.ssid.c_str());
     delay(500);
   }
-
   if (WiFi.status() == WL_CONNECTED)
-  {
-    Serial.printf("[wifi] conectado, IP %s\n", WiFi.localIP().toString().c_str());
-  }
-  else
-  {
-    Serial.println("[wifi] falha ao conectar - tentando novamente em segundo plano");
-    statusLed(STATUS_LED_LEVEL, 0, 0);
-    showMessage("Falha no Wi-Fi", "verifique settings.h");
-    delay(2000);
-  }
+    return true;
+
+  Serial.println("[wifi] falha ao conectar");
+  statusLed(STATUS_LED_LEVEL, 0, 0);
+  return false;
 }
 
-static void syncTime()
+static void waitForTime()
 {
-  configTzTime(TIMEZONE, NTP_SERVER_1, NTP_SERVER_2);
-  if (WiFi.status() != WL_CONNECTED)
-    return;
   showMessage("Sincronizando hora...", nullptr);
   uint32_t start = millis();
   while (!timeIsValid() && millis() - start < 10000)
@@ -584,20 +633,36 @@ static void updateBrightness()
 }
 
 // ===========================================================================
-// Botão BOOT: troca de página
+// Botão BOOT: toque curto = próxima tela, segurar 3 s = modo de configuração
 // ===========================================================================
-static bool buttonPressed()
+#define BTN_NONE  0
+#define BTN_SHORT 1
+#define BTN_LONG  2
+
+static int readButton()
 {
-  static bool lastState = HIGH;
-  static uint32_t lastChange = 0;
-  bool state = digitalRead(BTN_BOOT);
-  if (state != lastState && millis() - lastChange > 40)
+  static bool down = false, longFired = false;
+  static uint32_t downAt = 0, lastChange = 0;
+  bool pressed = digitalRead(BTN_BOOT) == LOW;
+  uint32_t now = millis();
+  if (pressed != down && now - lastChange > 40)
   {
-    lastChange = millis();
-    lastState = state;
-    return state == LOW; // borda de descida
+    lastChange = now;
+    down = pressed;
+    if (pressed)
+    {
+      downAt = now;
+      longFired = false;
+    }
+    else if (!longFired)
+      return BTN_SHORT;
   }
-  return false;
+  if (down && !longFired && now - downAt >= 3000)
+  {
+    longFired = true;
+    return BTN_LONG;
+  }
+  return BTN_NONE;
 }
 
 // ===========================================================================
@@ -632,11 +697,15 @@ void setup()
   setBrightness(BRIGHTNESS_DAY);
 
   showMessage("Iniciando...", nullptr);
-  connectWiFi();
-  syncTime();
+  loadConfig();
+  applyTimezone();
+  setupWebServer();
 
-  if (WiFi.status() == WL_CONNECTED)
+  if (connectWiFi())
   {
+    wasConnected = true;
+    onWifiConnected();
+    waitForTime();
     showMessage("Buscando previsão...", nullptr);
     if (fetchWeather())
       nextFetchDelay = UPDATE_INTERVAL_SECS * 1000UL;
@@ -646,6 +715,13 @@ void setup()
       nextFetchDelay = 60 * 1000UL;
     }
     lastFetchMs = millis();
+    fetchNow = false;
+  }
+  else
+  {
+    // sem rede salva, ou ela não respondeu: abre o modo de configuração
+    // (se a rede salva voltar e ninguém usar o portal, ele fecha sozinho)
+    startPortal(cfg.ssid.length() > 0);
   }
 
   updateBrightness();
@@ -657,18 +733,28 @@ void loop()
 {
   uint32_t nowMs = millis();
 
-  // Reconexão do Wi-Fi
-  if (WiFi.status() != WL_CONNECTED && nowMs - lastReconnect > 15000)
+  webLoop();
+
+  // Conexão / reconexão do Wi-Fi
+  bool connected = WiFi.status() == WL_CONNECTED;
+  if (connected && !wasConnected)
+    onWifiConnected();
+  if (connected != wasConnected)
+    needRedraw = true;
+  wasConnected = connected;
+  if (!connected && !staConnecting && cfg.ssid.length() &&
+      nowMs - lastReconnect > (portalActive ? 30000UL : 15000UL))
   {
     lastReconnect = nowMs;
     Serial.println("[wifi] reconectando...");
-    WiFi.reconnect();
+    WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str());
   }
 
   // Atualização periódica da previsão
-  if (WiFi.status() == WL_CONNECTED &&
-      (lastFetchMs == 0 || nowMs - lastFetchMs >= nextFetchDelay))
+  if (connected && !staConnecting &&
+      (fetchNow || lastFetchMs == 0 || nowMs - lastFetchMs >= nextFetchDelay))
   {
+    fetchNow = false;
     lastFetchMs = nowMs;
     if (fetchWeather())
       nextFetchDelay = UPDATE_INTERVAL_SECS * 1000UL;
@@ -680,8 +766,32 @@ void loop()
     needRedraw = true;
   }
 
+  // Botão BOOT
+  int btn = readButton();
+  if (btn == BTN_LONG)
+  {
+    if (portalActive)
+      stopPortal();
+    else
+      startPortal(false);
+  }
+
+  // Modo de configuração: tela própria, atualizada a cada segundo
+  if (portalActive)
+  {
+    static uint32_t lastPortalDraw = 0;
+    if (needRedraw || nowMs - lastPortalDraw > 1000)
+    {
+      needRedraw = false;
+      lastPortalDraw = nowMs;
+      drawPortalScreen();
+    }
+    delay(5);
+    return;
+  }
+
   // Troca de página: botão ou automática
-  if (buttonPressed())
+  if (btn == BTN_SHORT)
   {
     page = (page + 1) % NUM_PAGES;
     lastPageChange = nowMs;

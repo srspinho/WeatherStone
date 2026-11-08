@@ -13,6 +13,7 @@ Estação de previsão do tempo para a placa **Waveshare ESP32-C6-LCD-1.47**
 | OpenWeatherMap (precisa de chave API)  | **Open-Meteo** (gratuito, sem cadastro e sem chave)          |
 | Ícones em bitmap                       | Ícones vetoriais coloridos, desenhados em qualquer tamanho  |
 | Touch para trocar de tela              | Botão **BOOT** + troca automática de telas                  |
+| Wi-Fi e cidade fixos no código         | **Configuração pelo celular** (escolha da rede e busca de cidades) |
 | —                                      | Brilho reduzido à noite, LED RGB de status, textos em PT-BR |
 
 ## Telas
@@ -23,8 +24,29 @@ Estação de previsão do tempo para a placa **Waveshare ESP32-C6-LCD-1.47**
 2. **Detalhes** – duas colunas com sensação térmica, umidade, vento com direção,
    pressão, chance de chuva, índice UV, nascer e pôr do sol, e o horário da última atualização.
 
-As telas alternam a cada 10 s (configurável) e também podem ser trocadas pelo botão **BOOT**.
+As telas alternam a cada 10 s (configurável) e também podem ser trocadas com um toque no botão **BOOT**.
 Um ponto vermelho no canto superior direito indica que os dados estão desatualizados.
+
+## Configuração pelo celular (Wi-Fi e cidade)
+
+Não é preciso editar o código para trocar de rede ou de cidade.
+
+1. Na primeira vez que a estação liga (ou quando ela não consegue conectar na
+   rede salva), ou **segurando o botão BOOT por 3 segundos**, ela entra no
+   **modo de configuração** e o display mostra as instruções.
+2. No celular, conecte na rede Wi-Fi **`WeatherStation`**. A página de
+   configuração abre sozinha. Se não abrir, acesse `http://192.168.4.1`.
+3. Toque na sua rede, digite a senha e toque em **Conectar**.
+4. Toque em **Escolher cidade**, digite o nome (ex.: *Campinas*) e escolha
+   na lista. Só aparecem cidades do Brasil. O fuso horário é ajustado sozinho.
+5. Toque em **Concluir configuração**.
+
+Depois disso, a mesma página fica disponível na sua rede em
+**http://weatherstation.local**, ou pelo IP que aparece no rodapé da tela
+"Detalhes". Por ela dá para trocar a cidade a qualquer momento.
+
+Tudo fica gravado na memória flash da placa e continua salvo quando você
+desliga a placa ou envia o sketch de novo.
 
 ## Pinagem usada (fixa na placa)
 
@@ -55,7 +77,7 @@ Nenhum fio extra é necessário.
    - *USB CDC On Boot*: **Enabled** (para ver o Serial Monitor)
    - *Flash Size*: 4MB
    - *Partition Scheme*: Default 4MB with spiffs
-4. Edite **`WeatherStation_ESP32C6/settings.h`**: Wi-Fi (rede 2.4 GHz), nome da cidade, latitude/longitude e fuso horário.
+4. Não é preciso editar nada: Wi-Fi e cidade são configurados pelo celular (veja acima).
 5. Carregue o sketch. Se a placa não for detectada, segure **BOOT**, aperte **RST** e solte **BOOT**.
 
 ## Personalização
@@ -67,6 +89,8 @@ Tudo fica em `WeatherStation_ESP32C6/settings.h`:
 - `DISPLAY_ROTATION` – `1` ou `3` (horizontal); se a imagem ficar de cabeça para baixo, troque um pelo outro
 - `BRIGHTNESS_DAY`, `BRIGHTNESS_NIGHT`, `NIGHT_START_HOUR`, `NIGHT_END_HOUR`
 - `USE_STATUS_LED` – liga/desliga o LED RGB de status
+- `AP_NAME` / `AP_PASSWORD` – nome e senha da rede do modo de configuração
+- `DEFAULT_CITY`, `DEFAULT_LAT`, `DEFAULT_LON` – cidade usada antes da primeira configuração
 
 Cores ficam no topo de `WeatherStation_ESP32C6/weather_icons.h`.
 

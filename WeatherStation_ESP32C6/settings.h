@@ -11,29 +11,30 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// Wi-Fi (o ESP32-C6 só conecta em redes 2.4 GHz)
+// Wi-Fi e cidade
+//
+// Normalmente NÃO é preciso editar nada aqui: na primeira vez que a estação
+// liga sem configuração (ou segurando o botão BOOT por 3 segundos) ela entra
+// no MODO DE CONFIGURAÇÃO, cria a rede Wi-Fi AP_NAME e abre uma página no
+// celular para escolher a rede, digitar a senha e buscar a cidade.
+// Depois disso a mesma página continua acessível na sua rede em
+// http://weatherstation.local (ou pelo IP mostrado na tela "Detalhes").
+//
+// Os valores abaixo são usados só enquanto nada foi salvo pela página.
 // ---------------------------------------------------------------------------
-#define WIFI_SSID "SUA_REDE_WIFI"
-#define WIFI_PASS "SUA_SENHA_WIFI"
+#define WIFI_SSID ""            // opcional: rede padrão (2.4 GHz)
+#define WIFI_PASS ""
 
-// ---------------------------------------------------------------------------
-// Localização
-// Pegue a latitude/longitude da sua cidade no Google Maps (botão direito no
-// mapa -> clique nas coordenadas para copiar).
-// ---------------------------------------------------------------------------
-#define LOCATION_NAME "Sao Paulo"   // nome exibido no topo da tela (UTF-8 ok: "São Paulo")
-#define LATITUDE      "-23.5505"
-#define LONGITUDE     "-46.6333"
+#define DEFAULT_CITY       "São Paulo"
+#define DEFAULT_UF         "SP"
+#define DEFAULT_LAT        -23.5505f
+#define DEFAULT_LON        -46.6333f
+#define DEFAULT_UTC_OFFSET (-3 * 3600)  // ajustado sozinho conforme a cidade
 
-// ---------------------------------------------------------------------------
-// Fuso horário (formato POSIX TZ)
-//   Brasília / São Paulo / Rio / BH / Sul ....... "<-03>3"
-//   Manaus / Cuiabá / Campo Grande .............. "<-04>4"
-//   Rio Branco .................................. "<-05>5"
-//   Fernando de Noronha ......................... "<-02>2"
-//   Lisboa ...................................... "WET0WEST,M3.5.0/1,M10.5.0"
-// ---------------------------------------------------------------------------
-#define TIMEZONE "<-03>3"
+// Rede criada pela estação no modo de configuração
+#define AP_NAME     "WeatherStation"
+#define AP_PASSWORD ""                 // vazio = rede aberta (mín. 8 caracteres se usar)
+#define HOSTNAME    "weatherstation"   // http://weatherstation.local
 
 #define NTP_SERVER_1 "pool.ntp.org"
 #define NTP_SERVER_2 "a.st1.ntp.br"
