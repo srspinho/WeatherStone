@@ -131,7 +131,8 @@ static bool timeIsValid()
   return time(nullptr) > 1700000000; // depois de nov/2023 => NTP sincronizado
 }
 
-static int dayOfWeek(int y, int m, int d) // 0 = domingo (algoritmo de Sakamoto)
+// Dia da semana, 0 = domingo (algoritmo de Sakamoto)
+static int dayOfWeek(int y, int m, int d)
 {
   static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
   if (m < 3)
@@ -148,14 +149,7 @@ static const char *windDirText(int deg)
 // ---------------------------------------------------------------------------
 // Texto
 // ---------------------------------------------------------------------------
-enum Align
-{
-  AL_LEFT,
-  AL_CENTER,
-  AL_RIGHT
-};
-
-static int16_t textWidth(const char *s, int16_t *xOffset = nullptr)
+static int16_t textWidthOfs(const char *s, int16_t *xOffset)
 {
   int16_t x1, y1;
   uint16_t w, h;
@@ -163,6 +157,11 @@ static int16_t textWidth(const char *s, int16_t *xOffset = nullptr)
   if (xOffset)
     *xOffset = x1;
   return (int16_t)w;
+}
+
+static int16_t textWidth(const char *s)
+{
+  return textWidthOfs(s, nullptr);
 }
 
 // Desenha texto com (x, y) = ponto de alinhamento na linha de base.
@@ -173,7 +172,7 @@ static int16_t drawText(const char *s, int16_t x, int16_t y, Align align, uint16
   gfx->setFont(font);
   gfx->setTextColor(color);
   int16_t xo;
-  int16_t w = textWidth(s, &xo);
+  int16_t w = textWidthOfs(s, &xo);
   int16_t cx = x;
   if (align == AL_CENTER)
     cx = x - xo - w / 2;
@@ -226,7 +225,7 @@ static void drawPageDots()
 // ===========================================================================
 // Telas
 // ===========================================================================
-static void showMessage(const char *line1, const char *line2 = nullptr)
+static void showMessage(const char *line1, const char *line2)
 {
   const int16_t W = gfx->width();
   gfx->fillScreen(C_BG);
@@ -560,7 +559,7 @@ static void syncTime()
   configTzTime(TIMEZONE, NTP_SERVER_1, NTP_SERVER_2);
   if (WiFi.status() != WL_CONNECTED)
     return;
-  showMessage("Sincronizando hora...");
+  showMessage("Sincronizando hora...", nullptr);
   uint32_t start = millis();
   while (!timeIsValid() && millis() - start < 10000)
     delay(200);
@@ -632,13 +631,13 @@ void setup()
   ledcAttach(LCD_BL, 5000, 8);
   setBrightness(BRIGHTNESS_DAY);
 
-  showMessage("Iniciando...");
+  showMessage("Iniciando...", nullptr);
   connectWiFi();
   syncTime();
 
   if (WiFi.status() == WL_CONNECTED)
   {
-    showMessage("Buscando previsão...");
+    showMessage("Buscando previsão...", nullptr);
     if (fetchWeather())
       nextFetchDelay = UPDATE_INTERVAL_SECS * 1000UL;
     else

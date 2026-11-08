@@ -38,6 +38,15 @@
 #define C_BOLT        RGB565(255, 222, 0)
 #define C_FOG         RGB565(165, 172, 186)
 
+// Alinhamento de texto (fica num .h porque o Arduino IDE gera os protótipos
+// das funções do .ino antes de qualquer tipo declarado nele)
+enum Align
+{
+  AL_LEFT,
+  AL_CENTER,
+  AL_RIGHT
+};
+
 enum WeatherKind
 {
   WK_CLEAR,
