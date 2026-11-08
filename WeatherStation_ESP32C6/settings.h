@@ -36,6 +36,11 @@
 #define AP_PASSWORD ""                 // vazio = rede aberta (mín. 8 caracteres se usar)
 #define HOSTNAME    "weatherstation"   // http://weatherstation.local
 
+// Se ninguém se conectar à rede de configuração neste tempo, ela é desligada
+// (o rádio no modo access point não economiza energia e aquece a placa).
+// Para reabrir: segure o botão BOOT por 3 segundos.
+#define PORTAL_TIMEOUT_MIN 5
+
 #define NTP_SERVER_1 "pool.ntp.org"
 #define NTP_SERVER_2 "a.st1.ntp.br"
 

@@ -44,6 +44,11 @@ Não é preciso editar o código para trocar de rede ou de cidade.
    na lista. Só aparecem cidades do Brasil. O fuso horário é ajustado sozinho.
 5. Toque em **Concluir configuração**.
 
+Se ninguém se conectar à rede `WeatherStation` em 5 minutos (`PORTAL_TIMEOUT_MIN`),
+ela é desligada para não aquecer a placa. Para reabrir, segure o BOOT por 3 segundos.
+Quando a rede salva cai, a estação tenta reconectar com intervalos crescentes
+(5 s, 10 s, 20 s... até 5 minutos).
+
 Depois disso, a mesma página fica disponível na sua rede em
 **http://weatherstation.local**, ou pelo IP que aparece no rodapé da tela
 "Detalhes". Por ela dá para trocar a cidade a qualquer momento.

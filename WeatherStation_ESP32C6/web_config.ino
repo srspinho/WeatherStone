@@ -381,6 +381,7 @@ static void startPortal(bool automatic)
   portalActive = true;
   portalAutomatic = automatic;
   portalStartMs = millis();
+  portalLastClientMs = millis();
   portalStopAt = 0;
 
   WiFi.mode(WIFI_AP_STA);
@@ -399,10 +400,22 @@ static void stopPortal()
   Serial.println("[portal] saindo do modo de configuração");
   dnsServer.stop();
   WiFi.softAPdisconnect(true);
-  WiFi.mode(WIFI_STA);
-  applyWifiPower();
-  if (cfg.ssid.length() && WiFi.status() != WL_CONNECTED)
-    WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str());
+  if (cfg.ssid.length() == 0)
+  {
+    // nada para conectar: desliga o rádio até o usuário reabrir a configuração
+    WiFi.mode(WIFI_OFF);
+  }
+  else
+  {
+    WiFi.mode(WIFI_STA);
+    applyWifiPower();
+    if (WiFi.status() != WL_CONNECTED)
+    {
+      reconnectDelay = 5000;
+      lastReconnect = millis(); // o loop assume as próximas tentativas
+      WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str());
+    }
+  }
   portalActive = false;
   portalStopAt = 0;
   statusLed(0, 0, 0);
@@ -457,6 +470,16 @@ static void webLoop()
 
   if (portalStopAt && (int32_t)(millis() - portalStopAt) >= 0)
   {
+    stopPortal();
+    return;
+  }
+
+  // Ninguém conectou na rede de configuração por PORTAL_TIMEOUT_MIN: desliga
+  if (WiFi.softAPgetStationNum() > 0)
+    portalLastClientMs = millis();
+  if (!staConnecting && millis() - portalLastClientMs > PORTAL_TIMEOUT_MIN * 60000UL)
+  {
+    Serial.println("[portal] ninguém conectou; desligando a rede de configuração");
     stopPortal();
     return;
   }

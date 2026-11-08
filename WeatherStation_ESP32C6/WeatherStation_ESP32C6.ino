@@ -155,6 +155,8 @@ uint32_t lastPageChange = 0;
 uint32_t lastFetchMs = 0;
 uint32_t nextFetchDelay = 0; // 0 = buscar o quanto antes
 uint32_t lastReconnect = 0;
+uint32_t reconnectDelay = 5000;     // cresce até 5 min enquanto a rede não volta
+uint32_t portalLastClientMs = 0;
 int lastMinute = -1;
 int currentBrightness = -1;
 
@@ -597,6 +599,12 @@ static void drawDetailsPage()
 
 static void render()
 {
+  if (cfg.ssid.length() == 0)
+  {
+    // sem rede configurada e com o modo de configuração desligado
+    showMessage("Wi-Fi não configurado", "Segure o botão BOOT por 3 s para configurar");
+    return;
+  }
   gfx->fillScreen(C_BG);
   drawHeader();
   if (page == 0)
@@ -740,7 +748,7 @@ static bool connectWiFi()
   WiFi.setHostname(HOSTNAME);
   WiFi.mode(WIFI_STA);
   applyWifiPower();
-  WiFi.setAutoReconnect(true);
+  WiFi.setAutoReconnect(false); // reconexão feita pelo loop, com intervalo crescente
   if (cfg.ssid.length() == 0)
     return false;
 
@@ -748,9 +756,16 @@ static bool connectWiFi()
   statusLed(0, 0, STATUS_LED_LEVEL);
 
   char dots[8] = "";
-  uint32_t start = millis();
+  uint32_t start = millis(), lastBegin = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 20000)
   {
+    wl_status_t st = WiFi.status();
+    if ((st == WL_NO_SSID_AVAIL || st == WL_CONNECT_FAILED || st == WL_DISCONNECTED) &&
+        millis() - lastBegin > 7000)
+    {
+      lastBegin = millis();
+      WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str());
+    }
     size_t n = strlen(dots);
     if (n >= 5)
       dots[0] = '\0';
@@ -916,12 +931,18 @@ void loop()
   if (connected != wasConnected)
     needRedraw = true;
   wasConnected = connected;
-  if (!connected && !staConnecting && cfg.ssid.length() &&
-      nowMs - lastReconnect > (portalActive ? 30000UL : 15000UL))
+  if (connected)
+    reconnectDelay = 5000;
+  else if (!staConnecting && cfg.ssid.length() && nowMs - lastReconnect > reconnectDelay)
   {
+    // cada tentativa varre os canais com o rádio no máximo; por isso o
+    // intervalo dobra a cada falha (5 s, 10 s, 20 s ... até 5 min)
     lastReconnect = nowMs;
-    Serial.println("[wifi] reconectando...");
+    Serial.printf("[wifi] reconectando (próxima tentativa em %lu s)\n",
+                  (unsigned long)min<uint32_t>(reconnectDelay * 2, 300000UL) / 1000);
+    WiFi.disconnect();
     WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str());
+    reconnectDelay = min<uint32_t>(reconnectDelay * 2, 300000UL);
   }
 
   // Atualização periódica da previsão
@@ -950,17 +971,20 @@ void loop()
       startPortal(false);
   }
 
-  // Modo de configuração: tela própria, atualizada a cada segundo
+  // Modo de configuração: tela própria, redesenhada só quando algo muda
   if (portalActive)
   {
-    static uint32_t lastPortalDraw = 0;
-    if (needRedraw || nowMs - lastPortalDraw > 1000)
+    static char lastSig[96] = "";
+    char sig[96];
+    snprintf(sig, sizeof(sig), "%d|%d|%d|%s|%s", (int)staConnecting, (int)WiFi.status(),
+             connectResult, cfg.ssid.c_str(), cfg.city.c_str());
+    if (needRedraw || strcmp(sig, lastSig) != 0)
     {
       needRedraw = false;
-      lastPortalDraw = nowMs;
+      strcpy(lastSig, sig);
       drawPortalScreen();
     }
-    delay(5);
+    delay(20);
     return;
   }
 
