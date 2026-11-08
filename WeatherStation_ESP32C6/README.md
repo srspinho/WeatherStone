@@ -1,7 +1,7 @@
 # Weather Station – Waveshare ESP32-C6-LCD-1.47
 
 Estação de previsão do tempo para a placa **Waveshare ESP32-C6-LCD-1.47**
-(ESP32-C6 + display IPS 1.47" ST7789 de 172 × 320), inspirada no projeto
+(ESP32-C6 + display IPS 1.47" ST7789), usando o display **na horizontal (320 × 172)**, inspirada no projeto
 [ThingPulse esp8266-weather-station-color](https://github.com/ThingPulse/esp8266-weather-station-color).
 
 ## O que muda em relação ao projeto original
@@ -17,10 +17,11 @@ Estação de previsão do tempo para a placa **Waveshare ESP32-C6-LCD-1.47**
 
 ## Telas
 
-1. **Agora** – relógio, data, ícone grande, temperatura, máx/mín do dia,
-   descrição, umidade, vento, chance de chuva e previsão dos próximos 3 dias.
-2. **Detalhes** – sensação térmica, umidade, vento com direção, pressão,
-   chance de chuva, índice UV, nascer e pôr do sol e horário da última atualização.
+1. **Agora** – relógio e data no topo; à esquerda ícone, temperatura, máx/mín,
+   descrição, umidade e vento; à direita a previsão dos próximos 3 dias
+   (ícone, máx/mín e chance de chuva).
+2. **Detalhes** – duas colunas com sensação térmica, umidade, vento com direção,
+   pressão, chance de chuva, índice UV, nascer e pôr do sol, e o horário da última atualização.
 
 As telas alternam a cada 10 s (configurável) e também podem ser trocadas pelo botão **BOOT**.
 Um ponto vermelho no canto superior direito indica que os dados estão desatualizados.
@@ -63,7 +64,7 @@ Tudo fica em `settings.h`:
 
 - `UPDATE_INTERVAL_SECS` – intervalo de atualização da previsão (padrão 10 min)
 - `PAGE_INTERVAL_MS` – tempo em cada tela (0 = só troca pelo botão)
-- `DISPLAY_ROTATION` – `0` (USB-C em cima) ou `2` (USB-C embaixo), útil conforme a montagem no organizador
+- `DISPLAY_ROTATION` – `1` ou `3` (horizontal); se a imagem ficar de cabeça para baixo, troque um pelo outro
 - `BRIGHTNESS_DAY`, `BRIGHTNESS_NIGHT`, `NIGHT_START_HOUR`, `NIGHT_END_HOUR`
 - `USE_STATUS_LED` – liga/desliga o LED RGB de status
 

@@ -62,6 +62,10 @@ Arduino_GFX *panel = new Arduino_ST7789(bus, LCD_RST, 0 /* rotação */, true /*
                                         LCD_WIDTH, LCD_HEIGHT,
                                         34 /* col offset 1 */, 0 /* row offset 1 */,
                                         34 /* col offset 2 */, 0 /* row offset 2 */);
+// O canvas é girado (rotação 1 ou 3) para obter 320 x 172 na horizontal
+#if (DISPLAY_ROTATION != 1) && (DISPLAY_ROTATION != 3)
+#error "DISPLAY_ROTATION deve ser 1 ou 3 (layout horizontal)"
+#endif
 Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel, 0, 0, DISPLAY_ROTATION);
 
 // ---------------------------------------------------------------------------
@@ -211,7 +215,7 @@ static void fmtTemp(char *buf, size_t n, float t)
 
 static void drawPageDots()
 {
-  const int16_t y = 315, gap = 12;
+  const int16_t y = gfx->height() - 5, gap = 12;
   int16_t x = gfx->width() / 2 - (NUM_PAGES - 1) * gap / 2;
   for (int i = 0; i < NUM_PAGES; i++)
   {
@@ -223,27 +227,25 @@ static void drawPageDots()
 }
 
 // ===========================================================================
-// Telas
+// Telas (layout horizontal: 320 x 172)
 // ===========================================================================
 static void showMessage(const char *line1, const char *line2)
 {
-  const int16_t W = gfx->width();
+  const int16_t H = gfx->height();
   gfx->fillScreen(C_BG);
-  drawWeatherIcon(gfx, W / 2, 100, 96, 2, true, C_BG);
-  drawText("Weather Station", W / 2, 180, AL_CENTER, C_TEXT, u8g2_font_helvB12_tf);
-  drawText(line1, W / 2, 220, AL_CENTER, C_ACCENT, u8g2_font_helvB10_tf);
+  drawWeatherIcon(gfx, 72, H / 2, 100, 2, true, C_BG);
+  drawText("Weather Station", 222, 66, AL_CENTER, C_TEXT, u8g2_font_helvB12_tf);
+  drawText(line1, 222, 98, AL_CENTER, C_ACCENT, u8g2_font_helvB10_tf);
   if (line2)
-    drawText(line2, W / 2, 240, AL_CENTER, C_TEXT_DIM, u8g2_font_helvR08_tf);
+    drawText(line2, 222, 118, AL_CENTER, C_TEXT_DIM, u8g2_font_helvR08_tf);
   gfx->flush();
 }
 
-// Cabeçalho comum: cidade, relógio grande e data
+// Cabeçalho comum: relógio grande à esquerda, data e cidade à direita
 static void drawHeader()
 {
   const int16_t W = gfx->width();
   char buf[32];
-
-  drawText(LOCATION_NAME, W / 2, 12, AL_CENTER, C_TEXT_DIM, u8g2_font_helvB08_tf);
 
   if (timeIsValid())
   {
@@ -251,45 +253,46 @@ static void drawHeader()
     struct tm t;
     localtime_r(&now, &t);
     snprintf(buf, sizeof(buf), "%02d:%02d", t.tm_hour, t.tm_min);
-    drawText(buf, W / 2, 48, AL_CENTER, C_TEXT, u8g2_font_logisoso32_tn);
+    drawText(buf, 8, 40, AL_LEFT, C_TEXT, u8g2_font_logisoso32_tn);
     snprintf(buf, sizeof(buf), "%s, %02d %s", WDAY_LONG[t.tm_wday], t.tm_mday, MONTHS[t.tm_mon]);
-    drawText(buf, W / 2, 65, AL_CENTER, C_TEXT_DIM, u8g2_font_helvR10_tf);
+    drawText(buf, W - 8, 21, AL_RIGHT, C_TEXT, u8g2_font_helvB10_tf);
   }
   else
   {
-    drawText("--:--", W / 2, 48, AL_CENTER, C_TEXT_DIM, u8g2_font_logisoso32_tn);
+    drawText("--:--", 8, 40, AL_LEFT, C_TEXT_DIM, u8g2_font_logisoso32_tn);
   }
+
+  if (WiFi.status() != WL_CONNECTED)
+    drawText("sem Wi-Fi", W - 8, 38, AL_RIGHT, RGB565(255, 90, 90), u8g2_font_helvB08_tf);
+  else
+    drawText(LOCATION_NAME, W - 8, 38, AL_RIGHT, C_TEXT_DIM, u8g2_font_helvR08_tf);
 
   // indicador de dados desatualizados (falhas seguidas de atualização)
   bool stale = !wx.valid || (timeIsValid() && time(nullptr) - wx.updatedAt > 3 * UPDATE_INTERVAL_SECS);
   if (stale)
-    gfx->fillCircle(W - 8, 8, 3, RGB565(255, 60, 60));
-  if (WiFi.status() != WL_CONNECTED)
-    drawText("sem Wi-Fi", 4, 12, AL_LEFT, RGB565(255, 90, 90), u8g2_font_helvR08_tf);
+    gfx->fillCircle(W - 4, 4, 3, RGB565(255, 60, 60));
 
-  gfx->drawFastHLine(10, 73, W - 20, C_PANEL_LINE);
+  gfx->drawFastHLine(8, 47, W - 16, C_PANEL_LINE);
 }
 
-// Página 1: condições atuais + previsão para 3 dias
+// Página 1: condições atuais (esquerda) + previsão para 3 dias (direita)
 static void drawMainPage()
 {
-  const int16_t W = gfx->width();
-  char buf[32];
+  char buf[40];
 
-  // Ícone grande à esquerda
-  drawWeatherIcon(gfx, 44, 118, 84, wx.code, wx.isDay, C_BG);
+  // ---- Lado esquerdo: agora (x 0..160) ----
+  drawWeatherIcon(gfx, 38, 86, 68, wx.code, wx.isDay, C_BG);
 
-  // Temperatura grande à direita
   if (isnan(wx.temp))
     snprintf(buf, sizeof(buf), "--");
   else
     snprintf(buf, sizeof(buf), "%ld", lroundf(wx.temp));
   gfx->setFont(u8g2_font_logisoso42_tn);
   int16_t tw = textWidth(buf);
-  int16_t tx = 128 - tw / 2 - 4;
-  int16_t end = drawText(buf, tx, 128, AL_LEFT, C_TEXT, u8g2_font_logisoso42_tn);
-  gfx->fillCircle(end + 7, 92, 5, C_TEXT); // símbolo de grau
-  gfx->fillCircle(end + 7, 92, 2, C_BG);
+  int16_t tx = 116 - tw / 2 - 5;
+  int16_t end = drawText(buf, tx, 106, AL_LEFT, C_TEXT, u8g2_font_logisoso42_tn);
+  gfx->fillCircle(end + 7, 70, 5, C_TEXT); // símbolo de grau
+  gfx->fillCircle(end + 7, 70, 2, C_BG);
 
   // Máxima / mínima de hoje
   char tmax[12], tmin[12];
@@ -297,63 +300,54 @@ static void drawMainPage()
   fmtTemp(tmin, sizeof(tmin), wx.days[0].tmin);
   gfx->setFont(u8g2_font_helvB10_tf);
   int16_t wMax = textWidth(tmax), wMin = textWidth(tmin);
-  int16_t sx = 128 - (wMax + 10 + wMin) / 2;
-  int16_t ex = drawText(tmax, sx, 150, AL_LEFT, C_TEMP_MAX, u8g2_font_helvB10_tf);
-  drawText(tmin, ex + 10, 150, AL_LEFT, C_TEMP_MIN, u8g2_font_helvB10_tf);
+  int16_t sx = 116 - (wMax + 10 + wMin) / 2;
+  int16_t ex = drawText(tmax, sx, 124, AL_LEFT, C_TEMP_MAX, u8g2_font_helvB10_tf);
+  drawText(tmin, ex + 10, 124, AL_LEFT, C_TEMP_MIN, u8g2_font_helvB10_tf);
 
   // Descrição
-  drawTextFit(wmoToText(wx.code), W / 2, 180, W - 8, C_TEXT);
+  drawTextFit(wmoToText(wx.code), 80, 145, 154, C_TEXT);
 
-  // Painel: umidade / vento / chuva
-  gfx->fillRoundRect(4, 189, W - 8, 42, 8, C_PANEL);
-  const int16_t colW = (W - 8) / 3;
-  const char *labels[] = {"Umidade", "Vento", "Chuva"};
-  char values[3][16];
+  // Umidade e vento
+  char hum[12], wind[16];
   if (wx.humidity >= 0)
-    snprintf(values[0], 16, "%d%%", wx.humidity);
+    snprintf(hum, sizeof(hum), "%d%%", wx.humidity);
   else
-    snprintf(values[0], 16, "--");
+    snprintf(hum, sizeof(hum), "--");
   if (!isnan(wx.wind))
-    snprintf(values[1], 16, "%ld km/h", lroundf(wx.wind));
+    snprintf(wind, sizeof(wind), "%ld km/h", lroundf(wx.wind));
   else
-    snprintf(values[1], 16, "--");
-  if (wx.days[0].pop >= 0)
-    snprintf(values[2], 16, "%d%%", wx.days[0].pop);
-  else
-    snprintf(values[2], 16, "--");
-  for (int i = 0; i < 3; i++)
-  {
-    int16_t cx = 4 + colW * i + colW / 2;
-    drawText(labels[i], cx, 204, AL_CENTER, C_TEXT_DIM, u8g2_font_helvR08_tf);
-    drawText(values[i], cx, 222, AL_CENTER, C_TEXT, u8g2_font_helvB10_tf);
-    if (i > 0)
-      gfx->drawFastVLine(4 + colW * i, 195, 30, C_PANEL_LINE);
-  }
+    snprintf(wind, sizeof(wind), "--");
+  int16_t x = drawText("Umid. ", 6, 162, AL_LEFT, C_TEXT_DIM, u8g2_font_helvR08_tf);
+  x = drawText(hum, x + 2, 162, AL_LEFT, C_TEXT, u8g2_font_helvB08_tf);
+  x = drawText("Vento ", x + 8, 162, AL_LEFT, C_TEXT_DIM, u8g2_font_helvR08_tf);
+  drawText(wind, x + 2, 162, AL_LEFT, C_TEXT, u8g2_font_helvB08_tf);
 
-  // Previsão: próximos 3 dias
-  gfx->fillRoundRect(4, 236, W - 8, 72, 8, C_PANEL);
+  // ---- Lado direito: próximos 3 dias (x 164..316) ----
+  const int16_t px = 164, pw = 152, colW = pw / 3;
+  gfx->fillRoundRect(px, 53, pw, 110, 8, C_PANEL);
   for (int i = 1; i <= 3; i++)
   {
     const DayForecast &d = wx.days[i];
-    int16_t cx = 4 + colW * (i - 1) + colW / 2;
-    drawText(WDAY_SHORT[d.wday], cx, 251, AL_CENTER, C_ACCENT, u8g2_font_helvB10_tf);
-    drawWeatherIcon(gfx, cx, 271, 32, d.code, true, C_PANEL);
+    int16_t cx = px + colW * (i - 1) + colW / 2;
+    drawText(WDAY_SHORT[d.wday], cx, 70, AL_CENTER, C_ACCENT, u8g2_font_helvB10_tf);
+    drawWeatherIcon(gfx, cx, 94, 34, d.code, true, C_PANEL);
     fmtTemp(tmax, sizeof(tmax), d.tmax);
     fmtTemp(tmin, sizeof(tmin), d.tmin);
-    gfx->setFont(u8g2_font_helvB08_tf);
-    int16_t a = textWidth(tmax), b = textWidth(tmin);
-    int16_t x0 = cx - (a + 5 + b) / 2;
-    int16_t e = drawText(tmax, x0, 302, AL_LEFT, C_TEMP_MAX, u8g2_font_helvB08_tf);
-    drawText(tmin, e + 5, 302, AL_LEFT, C_TEMP_MIN, u8g2_font_helvB08_tf);
+    drawText(tmax, cx, 127, AL_CENTER, C_TEMP_MAX, u8g2_font_helvB10_tf);
+    drawText(tmin, cx, 143, AL_CENTER, C_TEMP_MIN, u8g2_font_helvB10_tf);
+    if (d.pop >= 0)
+    {
+      snprintf(buf, sizeof(buf), "%d%%", d.pop);
+      drawText(buf, cx, 157, AL_CENTER, C_TEXT_DIM, u8g2_font_helvR08_tf);
+    }
     if (i > 1)
-      gfx->drawFastVLine(4 + colW * (i - 1), 242, 60, C_PANEL_LINE);
+      gfx->drawFastVLine(px + colW * (i - 1), 59, 98, C_PANEL_LINE);
   }
 }
 
-// Página 2: detalhes
+// Página 2: detalhes em duas colunas
 static void drawDetailsPage()
 {
-  const int16_t W = gfx->width();
   char buf[32];
 
   struct Row
@@ -394,14 +388,20 @@ static void drawDetailsPage()
   rows[7].label = "Pôr do sol";
   snprintf(rows[7].value, 20, "%s", wx.sunset);
 
-  gfx->fillRoundRect(4, 80, W - 8, 210, 8, C_PANEL);
-  for (int i = 0; i < 8; i++)
+  const int16_t top = 53, rowH = 25, colW = 154;
+  for (int c = 0; c < 2; c++)
   {
-    int16_t y = 80 + 26 * i;
-    if (i > 0)
-      gfx->drawFastHLine(12, y, W - 24, C_PANEL_LINE);
-    drawText(rows[i].label, 12, y + 18, AL_LEFT, C_TEXT_DIM, u8g2_font_helvR10_tf);
-    drawText(rows[i].value, W - 12, y + 18, AL_RIGHT, C_TEXT, u8g2_font_helvB10_tf);
+    int16_t x0 = 4 + c * (colW + 4);
+    gfx->fillRoundRect(x0, top, colW, rowH * 4 + 2, 8, C_PANEL);
+    for (int r = 0; r < 4; r++)
+    {
+      const Row &row = rows[c * 4 + r];
+      int16_t y = top + 1 + rowH * r;
+      if (r > 0)
+        gfx->drawFastHLine(x0 + 8, y, colW - 16, C_PANEL_LINE);
+      drawText(row.label, x0 + 8, y + 17, AL_LEFT, C_TEXT_DIM, u8g2_font_helvR10_tf);
+      drawText(row.value, x0 + colW - 8, y + 17, AL_RIGHT, C_TEXT, u8g2_font_helvB10_tf);
+    }
   }
 
   if (wx.updatedAt > 0)
@@ -409,7 +409,7 @@ static void drawDetailsPage()
     struct tm t;
     localtime_r(&wx.updatedAt, &t);
     snprintf(buf, sizeof(buf), "Atualizado às %02d:%02d", t.tm_hour, t.tm_min);
-    drawText(buf, W / 2, 304, AL_CENTER, C_TEXT_DIM, u8g2_font_helvR08_tf);
+    drawText(buf, 8, 168, AL_LEFT, C_TEXT_DIM, u8g2_font_helvR08_tf);
   }
 }
 

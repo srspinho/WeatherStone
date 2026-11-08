@@ -51,8 +51,9 @@
 // sozinho (troca apenas pelo botão BOOT).
 #define PAGE_INTERVAL_MS 10000
 
-// Orientação do display: 0 = USB-C para cima, 2 = USB-C para baixo (180°)
-#define DISPLAY_ROTATION 0
+// Orientação do display (layout horizontal, 320 x 172):
+//   1 ou 3 - se a imagem aparecer de cabeça para baixo, troque 1 <-> 3
+#define DISPLAY_ROTATION 1
 
 // ---------------------------------------------------------------------------
 // Brilho do backlight (0..255) e modo noturno
