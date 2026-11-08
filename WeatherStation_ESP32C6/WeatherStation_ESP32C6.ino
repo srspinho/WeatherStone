@@ -183,6 +183,13 @@ static void setBrightness(int value)
   }
 }
 
+// Economia de energia do Wi-Fi (chamar depois de qualquer WiFi.mode)
+static void applyWifiPower()
+{
+  WiFi.setTxPower(WIFI_TX_POWER);
+  WiFi.setSleep(true); // modem sleep: o rádio dorme entre os beacons do roteador
+}
+
 static bool timeIsValid()
 {
   return time(nullptr) > 1700000000; // depois de nov/2023 => NTP sincronizado
@@ -732,6 +739,7 @@ static bool connectWiFi()
 {
   WiFi.setHostname(HOSTNAME);
   WiFi.mode(WIFI_STA);
+  applyWifiPower();
   WiFi.setAutoReconnect(true);
   if (cfg.ssid.length() == 0)
     return false;
@@ -831,6 +839,7 @@ void setup()
   Serial.begin(115200);
   delay(200);
   Serial.println("\nWeather Station - ESP32-C6-LCD-1.47");
+  setCpuFrequencyMhz(CPU_FREQ_MHZ);
 
   pinMode(SD_CS, OUTPUT);
   digitalWrite(SD_CS, HIGH);
@@ -863,6 +872,7 @@ void setup()
   WiFi.persistent(false);
   WiFi.setHostname(HOSTNAME);
   WiFi.mode(WIFI_STA);
+  applyWifiPower();
   setupWebServer();
 
   if (connectWiFi())

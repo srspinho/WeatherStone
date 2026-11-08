@@ -59,10 +59,24 @@
 // ---------------------------------------------------------------------------
 // Brilho do backlight (0..255) e modo noturno
 // ---------------------------------------------------------------------------
-#define BRIGHTNESS_DAY    200
+#define BRIGHTNESS_DAY    150
 #define BRIGHTNESS_NIGHT  25
 #define NIGHT_START_HOUR  22  // a partir das 22:00 ...
 #define NIGHT_END_HOUR    7   // ... até as 07:00 usa BRIGHTNESS_NIGHT
+
+// ---------------------------------------------------------------------------
+// Consumo / aquecimento
+// O regulador da placa (5 V -> 3,3 V) é linear: toda a corrente consumida vira
+// calor nele. O que mais consome é o rádio Wi-Fi, depois a CPU; o backlight
+// pesa pouco. Estas opções reduzem o consumo sem prejudicar o funcionamento.
+// ---------------------------------------------------------------------------
+// Frequência da CPU: 80 MHz é o mínimo para o Wi-Fi e sobra para este projeto
+// (160 = padrão da placa).
+#define CPU_FREQ_MHZ 80
+
+// Potência de transmissão do Wi-Fi. Perto do roteador, 11-13 dBm bastam.
+// Se o sinal ficar instável, aumente (WIFI_POWER_15dBm, _17dBm, _19_5dBm).
+#define WIFI_TX_POWER WIFI_POWER_13dBm
 
 // ---------------------------------------------------------------------------
 // LED RGB onboard (WS2812 no GPIO8) como indicador de status

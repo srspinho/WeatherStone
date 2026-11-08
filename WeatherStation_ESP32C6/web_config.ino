@@ -384,6 +384,7 @@ static void startPortal(bool automatic)
   portalStopAt = 0;
 
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setTxPower(WIFI_TX_POWER);
   scanNetworks(); // varre antes de tentar conectar (varredura e conexão disputam o rádio)
   WiFi.softAP(AP_NAME, strlen(AP_PASSWORD) ? AP_PASSWORD : nullptr);
   dnsServer.start(53, "*", WiFi.softAPIP());
@@ -399,6 +400,7 @@ static void stopPortal()
   dnsServer.stop();
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);
+  applyWifiPower();
   if (cfg.ssid.length() && WiFi.status() != WL_CONNECTED)
     WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str());
   portalActive = false;
